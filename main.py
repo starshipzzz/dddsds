@@ -629,46 +629,61 @@ async def handle_review_decision(update: Update, context: ContextTypes.DEFAULT_T
     if str(update.effective_user.id) not in ADMIN_IDS:
         return CHOOSING
 
-    # Extraire l'action et l'ID de l'avis
-    action, review_id = query.data.split("_review_")
-    review_id = int(review_id)
+    # Extraire l'action et l'ID de l'avis - FIX ICI
+    parts = query.data.split("_")
+    action = parts[0]  # "approve" ou "reject"
+    review_id = int(parts[2])  # L'ID après le deuxième underscore
 
-    with open('config/reviews.json', 'r+') as f:
-        reviews = json.load(f)
-        
-        # Trouver l'avis dans la liste des avis en attente
-        review = None
-        for r in reviews['pending']:
-            if r['id'] == review_id:
-                review = r
-                reviews['pending'].remove(r)
-                break
+    try:
+        with open('config/reviews.json', 'r+') as f:
+            reviews = json.load(f)
+            
+            # Vérifier que les clés existent
+            if 'pending' not in reviews:
+                reviews['pending'] = []
+            if 'approved' not in reviews:
+                reviews['approved'] = []
+            
+            # Trouver l'avis dans la liste des avis en attente
+            review = None
+            for r in reviews['pending']:
+                if r['id'] == review_id:
+                    review = r
+                    reviews['pending'].remove(r)
+                    break
 
-        if review:
-            if action == "approve":
-                reviews['approved'].append(review)
-                success_text = "✅ Avis approuvé avec succès !"
-            else:
-                success_text = "❌ Avis refusé !"          
+            if review:
+                if action == "approve":
+                    reviews['approved'].append(review)
+                    success_text = "✅ Avis approuvé avec succès !"
+                else:
+                    success_text = "❌ Avis refusé !"          
 
-            # Sauvegarder les changements
-            f.seek(0)
-            json.dump(reviews, f, indent=2)
-            f.truncate()
+                # Sauvegarder les changements
+                f.seek(0)
+                json.dump(reviews, f, indent=2)
+                f.truncate()
 
-            # S'il reste des avis en attente, afficher le suivant
-            if reviews['pending']:
-                return await manage_pending_reviews(update, context)
-            else:
-                keyboard = [[InlineKeyboardButton("🔙 Retour", callback_data="show_reviews")]]
-                await query.edit_message_text(
-                    f"{success_text}\n\nTous les avis ont été traités.",
-                    reply_markup=InlineKeyboardMarkup(keyboard)
-                )
-                return CHOOSING
+                # S'il reste des avis en attente, afficher le suivant
+                if reviews['pending']:
+                    return await manage_pending_reviews(update, context)
+                else:
+                    keyboard = [[InlineKeyboardButton("🔙 Retour", callback_data="show_reviews")]]
+                    await query.edit_message_text(
+                        f"{success_text}\n\nTous les avis ont été traités.",
+                        reply_markup=InlineKeyboardMarkup(keyboard)
+                    )
+                    return CHOOSING
+    except Exception as e:
+        print(f"Erreur dans handle_review_decision: {e}")
+        keyboard = [[InlineKeyboardButton("🔙 Retour", callback_data="show_reviews")]]
+        await query.edit_message_text(
+            f"❌ Une erreur s'est produite: {e}",
+            reply_markup=InlineKeyboardMarkup(keyboard)
+        )
 
     return CHOOSING
-
+    
 async def post_review(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Commence le processus de création d'un avis"""
     query = update.callback_query
